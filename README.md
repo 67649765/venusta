@@ -1,4 +1,4 @@
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/venus-ta-starter/venusta/ci.yml?branch=main)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/67649765/venusta/ci.yml?branch=main)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-informational)
