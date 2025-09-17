@@ -1,0 +1,37 @@
+# --- Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Node/Frontend ---
+venusta-frontend/node_modules/
+venusta-frontend/dist/
+venusta-frontend/.vite/
+venusta-frontend/.eslintcache
+
+# --- Env files (保留示例) ---
+.env
+!.env.example
+
+# --- Logs & Temp ---
+logs/
+*.log
+
+# --- OS / Editors ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Coverage/Reports ---
+.coverage
+htmlcov/
+
+# --- DB data (如有本地挂载) ---
+db/data/

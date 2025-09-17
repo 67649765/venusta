@@ -1,0 +1,66 @@
+const API_BASE = import.meta.env.VITE_API_BASE as string;
+
+export type GeneratePayload = {
+  grade?: string;
+  subject?: string;
+  chapter?: string;
+  knowledge_points?: string[];
+  item_type_ratio?: Record<string, number>;
+  difficulty?: number;
+  num_items?: number;
+};
+
+export async function generateExam(payload: GeneratePayload = {}) {
+  const res = await fetch(`${API_BASE}/exams/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grade: "初中",
+      subject: "数学",
+      chapter: "二次函数",
+      knowledge_points: ["图像性质"],
+      item_type_ratio: { single_choice: 3, subjective: 2 },
+      difficulty: 3,
+      num_items: 5,
+      ...payload
+    })
+  });
+  if (!res.ok) throw new Error(`Generate failed: ${res.status}`);
+  return res.json() as Promise<{ paper_id: number; item_ids: number[] }>;
+}
+
+export async function gradeFirstItem(opts: {
+  user_id: number;
+  paper_id: number;
+  item_id: number;
+  answer: string;
+}) {
+  const res = await fetch(`${API_BASE}/grading/grade`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts)
+  });
+  if (!res.ok) throw new Error(`Grade failed: ${res.status}`);
+  return res.json() as Promise<{ score: number; judge_meta: unknown }>;
+}
+
+export async function fetchDashboard() {
+  const res = await fetch(`${API_BASE}/dashboard/metrics`);
+  if (!res.ok) throw new Error(`Dashboard failed: ${res.status}`);
+  return res.json() as Promise<{ responses: number; kappa: number; mae: number; satisfaction: number }>;
+}
+export type ReviewCard = { type?: string; content?: string; knowledge_point?: string; difficulty?: number; analysis?: string };
+export type ReviewResp = { summary: string; cards: ReviewCard[] };
+export type DiagnosisResp = { heatmap: Record<string, number>; error_dist: Record<string, number>; recommendations: Record<string, unknown> };
+
+export async function generateReview(opts:{user_id:number;paper_id:number}) {
+  const res = await fetch(`${API_BASE}/review`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(opts) });
+  if (!res.ok) throw new Error(`Review failed: ${res.status}`);
+  return res.json() as Promise<ReviewResp>;
+}
+
+export async function runDiagnosis(opts:{user_id:number;paper_id:number}) {
+  const res = await fetch(`${API_BASE}/diagnosis`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(opts) });
+  if (!res.ok) throw new Error(`Diagnosis failed: ${res.status}`);
+  return res.json() as Promise<DiagnosisResp>;
+}

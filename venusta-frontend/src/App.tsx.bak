@@ -1,0 +1,529 @@
+import React, { useMemo, useState } from "react";
+import { fetchDashboard, generateExam, gradeFirstItem, generateReview, runDiagnosis } from "./api";
+
+export default function App() {
+  const [paper, setPaper] = useState<{ paper_id: number; item_ids: number[] } | null>(null);
+  const [grade, setGrade] = useState<any>(null);
+  const [dash, setDash] = useState<any>(null);
+  const [review, setReview] = useState<any>(null);
+  const [diagnosis, setDiagnosis] = useState<any>(null);
+  const [busy, setBusy] = useState<string>("");
+  const [activeStep, setActiveStep] = useState<string>("");
+  
+  // 表单状态
+  const [showExamForm, setShowExamForm] = useState<boolean>(false);
+  const [examFormData, setExamFormData] = useState({
+    grade: "初中",
+    subject: "数学",
+    chapter: "二次函数",
+    knowledge_points: ["图像性质"],
+    item_type_ratio: { single_choice: 3, subjective: 2 },
+    difficulty: 3,
+    num_items: 5
+  });
+  
+  // Toast提示状态
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'error' | 'success' }>({
+    show: false,
+    message: "",
+    type: 'error'
+  });
+
+  const firstItem = useMemo(() => paper?.item_ids?.[0], [paper]);
+
+  // 显示Toast提示
+  const showToast = (message: string, type: 'error' | 'success' = 'error') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: "", type: 'error' });
+    }, 3000);
+  };
+
+  // 处理表单变更
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setExamFormData(prev => {
+      if (name === 'num_items' || name === 'difficulty') {
+        const n = parseInt(value, 10);
+        return { ...prev, [name]: Number.isFinite(n) ? n : prev[name as 'num_items'|'difficulty'] };
+      }
+      return { ...prev, [name]: value };
+    });
+  };
+
+  async function onGenerate() {
+    try {
+      setBusy("正在生成试卷…");
+      setActiveStep("generate");
+      const res = await generateExam(examFormData);
+      setPaper(res);
+      setGrade(null);
+      setDash(null);
+      setReview(null);
+      setDiagnosis(null);
+      setShowExamForm(false);
+      showToast("试卷生成成功！", 'success');
+    } catch (e: any) {
+      showToast(e.message);
+    } finally {
+      setBusy("");
+      setActiveStep("");
+    }
+  }
+
+  async function onGrade() {
+    if (!paper || !firstItem) return showToast("请先生成试卷");
+    try {
+      setBusy("正在判分…");
+      setActiveStep("grade");
+      const res = await gradeFirstItem({
+        user_id: 1,
+        paper_id: paper.paper_id,
+        item_id: firstItem,
+        answer: "2"
+      });
+      setGrade(res);
+      showToast("评分完成！", 'success');
+    } catch (e: any) {
+      showToast(e.message);
+    } finally {
+      setBusy("");
+      setActiveStep("");
+    }
+  }
+
+  async function onDashboard() {
+    try {
+      setBusy("加载看板数据…");
+      setActiveStep("dashboard");
+      const res = await fetchDashboard();
+      setDash(res);
+      showToast("看板数据加载成功！", 'success');
+    } catch (e: any) {
+      showToast(e.message);
+    } finally {
+      setBusy("");
+      setActiveStep("");
+    }
+  }
+
+  async function onReview() {
+    if (!paper) return showToast("请先生成试卷");
+    try {
+      setBusy("生成讲评…");
+      setActiveStep("review");
+      const data = await generateReview({ user_id: 1, paper_id: paper.paper_id });
+      setReview(data);
+      showToast("讲评生成成功！", 'success');
+    } catch (e: any) {
+      showToast(e.message);
+    } finally {
+      setBusy("");
+      setActiveStep("");
+    }
+  }
+
+  async function onDiagnosis() {
+    if (!paper) return showToast("请先生成试卷");
+    try {
+      setBusy("诊断中…");
+      setActiveStep("diagnosis");
+      const data = await runDiagnosis({ user_id: 1, paper_id: paper.paper_id });
+      setDiagnosis(data);
+      showToast("学情诊断完成！", 'success');
+    } catch (e: any) {
+      showToast(e.message);
+      console.warn('提示：请确保已完成评分步骤，诊断需要responses表中的数据');
+    } finally {
+      setBusy("");
+      setActiveStep("");
+    }
+  }
+
+  // 渲染进度指示器
+  const renderProgressIndicator = () => {
+    const steps = [
+      { id: 'generate', label: '出题', completed: !!paper, active: activeStep === 'generate' },
+      { id: 'grade', label: '判分', completed: !!grade, active: activeStep === 'grade' },
+      { id: 'dashboard', label: '看板', completed: !!dash, active: activeStep === 'dashboard' },
+      { id: 'review', label: '讲评', completed: !!review, active: activeStep === 'review' },
+      { id: 'diagnosis', label: '诊断', completed: !!diagnosis, active: activeStep === 'diagnosis' }
+    ];
+    
+    return (
+      <div className="progress-indicator">
+        {steps.map((step, index) => (
+          <React.Fragment key={step.id}>
+            <div className={`step ${step.completed ? 'completed' : ''} ${step.active ? 'active' : ''}`}>
+              {step.completed ? (
+                <span className="step-icon">✓</span>
+              ) : (
+                <span className="step-number">{index + 1}</span>
+              )}
+              <span className="step-label">{step.label}</span>
+            </div>
+            {index < steps.length - 1 && (
+              <div className={`progress-line ${step.completed ? 'completed' : ''}`}></div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
+
+  // 小型条形图组件
+  const BarChart = ({ data, maxValue = 100 }) => {
+    return (
+      <div className="bar-chart">
+        {Object.entries(data || {}).map(([key, value]) => {
+          const percentage = Math.min((Number(value) / maxValue) * 100, 100);
+          return (
+            <div key={key} className="chart-item">
+              <div className="chart-label">{key}</div>
+              <div className="chart-bar-container">
+                <div 
+                  className="chart-bar" 
+                  style={{ width: `${percentage}%` }}
+                ></div>
+              </div>
+              <div className="chart-value">{value}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // 小型饼图组件（简化版）
+  const PieChart = ({ data }) => {
+    const colors = ['#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2', '#073B4C'];
+    
+    if (!data || Object.keys(data).length === 0) return null;
+    
+    return (
+      <div className="pie-chart">
+        {Object.entries(data).map(([key, value], index) => (
+          <div key={key} className="pie-item">
+            <div 
+              className="pie-color" 
+              style={{ backgroundColor: colors[index % colors.length] }}
+            ></div>
+            <div className="pie-label">{key}</div>
+            <div className="pie-value">{value}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="app-container">
+      <header className="app-header">
+        <div className="header-content">
+          <h1>VenusTA 教师工作台</h1>
+          <p className="header-subtitle">
+            {busy || '智能辅助教学平台，提升教学效率'}
+          </p>
+        </div>
+      </header>
+      
+      {/* 进度指示器 */}
+      {renderProgressIndicator()}
+      
+      {/* 操作按钮区域 */}
+      <div className="action-buttons">
+        {!showExamForm ? (
+          <button 
+              className={`action-btn ${activeStep === 'generate' ? 'active' : ''}`}
+              onClick={() => setShowExamForm(true)}
+              disabled={activeStep === 'generate'}
+            >
+              {activeStep === 'generate' ? '生成中...' : '生成试卷'}
+            </button>
+        ) : (
+          <div className="exam-form">
+            <h3>配置试卷参数</h3>
+            <div className="form-row">
+              <div className="form-group">
+                <label>年级</label>
+                <select name="grade" value={examFormData.grade} onChange={handleFormChange}>
+                  <option value="小学">小学</option>
+                  <option value="初中">初中</option>
+                  <option value="高中">高中</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>科目</label>
+                <select name="subject" value={examFormData.subject} onChange={handleFormChange}>
+                  <option value="数学">数学</option>
+                  <option value="语文">语文</option>
+                  <option value="英语">英语</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>章节</label>
+                <input 
+                  type="text" 
+                  name="chapter" 
+                  value={examFormData.chapter} 
+                  onChange={handleFormChange}
+                />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>难度 (1-5)</label>
+                <input 
+                  type="number" 
+                  name="difficulty" 
+                  min="1" 
+                  max="5" 
+                  value={examFormData.difficulty} 
+                  onChange={handleFormChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>题量</label>
+                <input 
+                  type="number" 
+                  name="num_items" 
+                  min="1" 
+                  max="20" 
+                  value={examFormData.num_items} 
+                  onChange={handleFormChange}
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button className="submit-btn" onClick={onGenerate} disabled={activeStep === 'generate'}>
+                {activeStep === 'generate' ? '生成中...' : '确认生成'}
+              </button>
+              <button className="cancel-btn" onClick={() => setShowExamForm(false)}>取消</button>
+            </div>
+          </div>
+        )}
+        <button 
+          className={`action-btn ${activeStep === 'grade' ? 'active' : ''}`}
+          onClick={onGrade}
+          disabled={!paper || !!activeStep}
+        >
+          {activeStep === 'grade' ? '评分中...' : '判分'}
+        </button>
+        <button 
+          className={`action-btn ${activeStep === 'dashboard' ? 'active' : ''}`}
+          onClick={onDashboard}
+          disabled={!!activeStep}
+        >
+          {activeStep === 'dashboard' ? '加载中...' : '查看看板'}
+        </button>
+        <button 
+          className={`action-btn ${activeStep === 'review' ? 'active' : ''}`}
+          onClick={onReview}
+          disabled={!paper || !!activeStep}
+        >
+          {activeStep === 'review' ? '生成中...' : '生成讲评'}
+        </button>
+        <button 
+          className={`action-btn ${activeStep === 'diagnosis' ? 'active' : ''}`}
+          onClick={onDiagnosis}
+          disabled={!paper || !!activeStep}
+        >
+          {activeStep === 'diagnosis' ? '诊断中...' : '学情诊断'}
+        </button>
+      </div>
+      
+      {/* 数据卡片区域 */}
+      <div className="data-cards">
+        {/* 试卷信息卡片 */}
+        {paper && (
+          <div className="data-card paper-card">
+            <div className="card-header">
+              <h3>📝 试卷信息</h3>
+              <button className="close-btn" onClick={() => setPaper(null)}>×</button>
+            </div>
+            <div className="card-body">
+              <p><strong>试卷ID:</strong> {paper.paper_id}</p>
+              <p><strong>试题数量:</strong> {paper.item_ids.length}</p>
+              <p><strong>试题ID列表:</strong> {paper.item_ids.join(', ')}</p>
+            </div>
+          </div>
+        )}
+
+        {/* 评分结果卡片 */}
+        {grade && (
+          <div className="data-card grade-card">
+            <div className="card-header">
+              <h3>✍️ 评分结果</h3>
+              <button className="close-btn" onClick={() => setGrade(null)}>×</button>
+            </div>
+            <div className="card-body">
+              <div className="score-display">
+                <span className="score-value">{grade.score}</span>
+                <span className="score-max">/ 100</span>
+              </div>
+              {grade.judge_meta && (
+                <div className="judge-meta">
+                  <p><strong>评分依据:</strong> {grade.judge_meta.reason || '自动评分'}</p>
+                  {grade.judge_meta.confidence && (
+                    <p><strong>置信度:</strong> {Math.round(grade.judge_meta.confidence * 100)}%</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 看板数据卡片 */}
+        {dash && (
+          <div className="data-card dashboard-card">
+            <div className="card-header">
+              <h3>📊 教学看板</h3>
+              <button className="close-btn" onClick={() => setDash(null)}>×</button>
+            </div>
+            <div className="card-body">
+              <div className="metrics-grid">
+                <div className="metric-item">
+                  <span className="metric-label">总响应数</span>
+                  <span className="metric-value">{dash.responses ?? 0}</span>
+                </div>
+                <div className="metric-item">
+                  <span className="metric-label">Kappa系数</span>
+                  <span className="metric-value">{dash.kappa != null ? dash.kappa.toFixed(2) : 'N/A'}</span>
+                </div>
+                <div className="metric-item">
+                  <span className="metric-label">MAE</span>
+                  <span className="metric-value">{dash.mae != null ? dash.mae.toFixed(2) : 'N/A'}</span>
+                </div>
+                <div className="metric-item">
+                  <span className="metric-label">满意度</span>
+                  <span className="metric-value">{dash.satisfaction != null ? dash.satisfaction.toFixed(1) : 'N/A'}</span>
+                </div>
+              </div>
+              <div className="dashboard-chart">
+                <BarChart 
+                  data={{
+                    '响应数': dash.responses || 0
+                  }}
+                  maxValue={50}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 讲评结果卡片 */}
+        {review && (
+          <div className="data-card review-card">
+            <div className="card-header">
+              <h3>📚 试卷讲评</h3>
+              <button className="close-btn" onClick={() => setReview(null)}>×</button>
+            </div>
+            <div className="card-body">
+              <div className="review-summary">
+                <h4>核心总结</h4>
+                <p>{review.summary}</p>
+              </div>
+              {review.cards && (
+                <div className="review-cards">
+                  <h4>知识点分析</h4>
+                  {review.cards.map((card: any, index: number) => {
+                    const title = card.knowledge_point ?? card.type ?? `要点 ${index + 1}`;
+                    const difficulty = card.difficulty ?? '-';
+                    const text = card.analysis ?? card.content ?? '';
+                    return (
+                      <div key={index} className="knowledge-card">
+                        <div className="knowledge-card-header">
+                          <span className="knowledge-title">{title}</span>
+                          <span className="knowledge-difficulty">难度: {difficulty}</span>
+                        </div>
+                        <p className="knowledge-analysis">{text}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 诊断结果卡片 */}
+        {diagnosis && (
+          <div className="data-card diagnosis-card">
+            <div className="card-header">
+              <h3>🔍 学情诊断</h3>
+              <button className="close-btn" onClick={() => setDiagnosis(null)}>×</button>
+            </div>
+            <div className="card-body">
+              {diagnosis.heatmap && (
+                <div className="diagnosis-heatmap">
+                  <h4>知识点掌握热度图</h4>
+                  <div className="heatmap-grid">
+                    {Object.entries(diagnosis.heatmap).slice(0, 5).map(([point, value]) => (
+                      <div key={point} className="heatmap-item">
+                        <span className="heatmap-label">{point}</span>
+                        <div className="heatmap-bar-container">
+                          <div 
+                            className="heatmap-bar" 
+                            style={{ 
+                              width: `${value * 100}%`,
+                              backgroundColor: `rgba(255, 99, 132, ${value})`
+                            }}
+                          ></div>
+                        </div>
+                        <span className="heatmap-value">{Math.round(value * 100)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {diagnosis.error_dist && (
+                <div className="diagnosis-error">
+                  <h4>错误分布</h4>
+                  <PieChart data={diagnosis.error_dist} />
+                </div>
+              )}
+              
+              {diagnosis.recommendations && (
+                <div className="diagnosis-recommendations">
+                  <h4>教学建议</h4>
+                  <ul>
+                    {(() => {
+                      const recObj = diagnosis.recommendations;
+                      const list = Array.isArray(recObj)
+                        ? recObj
+                        : Object.entries(recObj).flatMap(([cat, items]: [string, any]) =>
+                            Array.isArray(items) ? items.map((x: any) => `${cat}: ${x}`) : [`${cat}: ${String(items)}`]
+                          );
+                      return list.slice(0, 6).map((t: string, i: number) => <li key={i}>{t}</li>);
+                    })()}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* 空状态提示 */}
+      {!paper && !grade && !dash && !review && !diagnosis && !busy && (
+        <div className="empty-state">
+          <div className="empty-state-icon">🎓</div>
+          <h3>欢迎使用 VenusTA 教师工作台</h3>
+          <p>请点击上方的「生成试卷」按钮开始您的教学工作流程</p>
+          <p className="empty-state-hint">建议流程：出题 → 判分 → 查看看板 → 生成讲评 → 进行诊断</p>
+        </div>
+      )}
+      
+      {/* Toast提示组件 */}
+      {toast.show && (
+        <div className={`toast toast-${toast.type}`}>
+          <span className="toast-icon">
+            {toast.type === 'success' ? '✅' : '❌'}
+          </span>
+          <span className="toast-message">{toast.message}</span>
+        </div>
+      )}
+    </div>
+  );
+}
